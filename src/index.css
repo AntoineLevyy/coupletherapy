@@ -1,0 +1,117 @@
+:root {
+  --paper: #f4f0ea;
+  --paper-deep: #ece5da;
+  --panel: rgba(248, 244, 238, 0.84);
+  --ink: #183234;
+  --muted: #5f706f;
+  --muted-strong: #315d60;
+  --border-strong: rgba(24, 50, 52, 0.14);
+  --shadow-soft: 0 24px 80px rgba(24, 50, 52, 0.08);
+  --shadow-lift: 0 14px 34px rgba(24, 50, 52, 0.12);
+  --serif:
+    'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'URW Palladio L',
+    Georgia, serif;
+  --sans:
+    'Avenir Next', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+  color: var(--ink);
+  font: 16px/1.55 var(--sans);
+  background:
+    radial-gradient(circle at top left, rgba(155, 188, 188, 0.28), transparent 24%),
+    radial-gradient(circle at top right, rgba(216, 202, 177, 0.26), transparent 22%),
+    linear-gradient(180deg, #f7f4ee 0%, #ede5d9 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--ink);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(rgba(24, 50, 52, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 50, 52, 0.03) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 88%);
+}
+
+a {
+  color: inherit;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+strong {
+  color: var(--ink);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 600;
+  line-height: 1.08;
+}
+
+h1 {
+  font-size: clamp(3.2rem, 7vw, 5.7rem);
+  max-width: 12ch;
+  letter-spacing: -0.05em;
+}
+
+h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+h3 {
+  font-size: 1.15rem;
+}
+
+p {
+  margin: 0;
+}
+
+ol {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  :root {
+    font-size: 15px;
+  }
+
+  h1 {
+    max-width: 100%;
+  }
+}
