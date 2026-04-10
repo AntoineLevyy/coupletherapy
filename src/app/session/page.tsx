@@ -237,23 +237,17 @@ export default function SessionPage() {
       console.log("[ElevenLabs] Agent ID:", agentId);
       console.log("[ElevenLabs] Prompt length:", systemPrompt.length, "chars");
 
-      // Start with overrides for returning users, basic connection for first-timers
-      const sessionConfig: Record<string, unknown> = {
+      // Always send overrides — mode-specific prompt + context for returning users
+      conversation.startSession({
         agentId,
-        connectionType: "websocket" as const,
-      };
-
-      // Only add overrides if we have context to inject
-      if (priorSyntheses.length > 0 || sessionType !== "initial") {
-        sessionConfig.overrides = {
+        connectionType: "websocket",
+        overrides: {
           agent: {
             prompt: { prompt: systemPrompt },
             firstMessage,
           },
-        };
-      }
-
-      conversation.startSession(sessionConfig as Parameters<typeof conversation.startSession>[0]);
+        },
+      } as Parameters<typeof conversation.startSession>[0]);
     } catch (err) {
       console.error("[ElevenLabs] Start failed:", err);
       setConnectionError("Failed to connect. Please try again.");

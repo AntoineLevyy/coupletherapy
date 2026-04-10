@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ListeningPod } from "@/components/pod/ListeningPod";
 import { saveSession } from "@/lib/store";
+import type { SessionMode } from "@/lib/framework";
 
 interface SessionRecord {
   id: string;
@@ -37,6 +38,8 @@ export function LoggedInHome() {
   const [coupleCode, setCoupleCode] = useState<string | null>(null);
   const [hasPartner, setHasPartner] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showModePicker, setShowModePicker] = useState(false);
+  const [pendingSessionType, setPendingSessionType] = useState<string>("ad-hoc");
 
   useEffect(() => {
     if (!user) return;
@@ -94,23 +97,19 @@ export function LoggedInHome() {
     loadData();
   }, [user]);
 
-  function startCheckIn() {
-    saveSession({
-      mode: "together",
-      sessionType: "ad-hoc",
-      startedAt: new Date().toISOString(),
-      transcript: [],
-    });
-    router.push("/session");
+  function promptSession(sessionType: string) {
+    setPendingSessionType(sessionType);
+    setShowModePicker(true);
   }
 
-  function startPlanAISession() {
+  function startWithMode(mode: SessionMode) {
     saveSession({
-      mode: "together",
-      sessionType: "check-in",
+      mode,
+      sessionType: pendingSessionType,
       startedAt: new Date().toISOString(),
       transcript: [],
     });
+    setShowModePicker(false);
     router.push("/session");
   }
 
@@ -321,7 +320,7 @@ export function LoggedInHome() {
                       {/* Start button for AI sessions */}
                       {item.action_type === "ai-session" && !item.completed && (
                         <button
-                          onClick={startPlanAISession}
+                          onClick={() => promptSession("check-in")}
                           className="mt-2 text-xs px-3 py-1.5 rounded-full cursor-pointer"
                           style={{ background: "var(--accent)", color: "var(--bg-primary)" }}
                         >
@@ -353,7 +352,7 @@ export function LoggedInHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card hover onClick={startCheckIn}>
+          <Card hover onClick={() => promptSession("ad-hoc")}>
             <div className="flex items-center gap-4">
               <div className="flex-shrink-0">
                 <ListeningPod state="idle" size="sm" />
@@ -387,7 +386,7 @@ export function LoggedInHome() {
           {sessions.length > 0 ? (
             <div className="space-y-2">
               {sessions.map((session) => (
-                <Card key={session.id} hover>
+                <Card key={session.id} hover onClick={() => router.push(`/report/${session.id}`)}>
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-sm" style={{ color: "var(--text-primary)" }}>
@@ -424,7 +423,7 @@ export function LoggedInHome() {
                 <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                   No sessions yet.
                 </p>
-                <Button className="mt-4" onClick={startCheckIn}>
+                <Button className="mt-4" onClick={() => promptSession("ad-hoc")}>
                   Start Your First Session
                 </Button>
               </div>
@@ -433,6 +432,80 @@ export function LoggedInHome() {
         </motion.div>
 
       </div>
+
+      {/* Mode Picker Modal */}
+      {showModePicker && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => setShowModePicker(false)}
+        >
+          <motion.div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              className="text-lg font-light text-center mb-2"
+              style={{ color: "var(--text-primary)" }}
+            >
+              How would you like to do this?
+            </h3>
+            <p
+              className="text-xs text-center mb-6"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Choose the mode that feels right.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => startWithMode("together")}
+                className="w-full p-4 rounded-xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+                style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg" style={{ color: "var(--accent)" }}>◎</span>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Together</p>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Both of you, one conversation.</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => startWithMode("solo")}
+                className="w-full p-4 rounded-xl text-left cursor-pointer transition-all hover:scale-[1.01]"
+                style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg" style={{ color: "var(--accent)" }}>○</span>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Solo</p>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Just you, privately. Your answers are never shared.</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowModePicker(false)}
+              className="w-full mt-4 text-xs text-center cursor-pointer py-2"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Cancel
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
     </main>
   );
 }
