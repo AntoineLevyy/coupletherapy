@@ -21,7 +21,6 @@ export function TypewriterText({
   const prevTextRef = useRef(text);
 
   useEffect(() => {
-    // If same text, skip animation
     if (text === prevTextRef.current && done) return;
     prevTextRef.current = text;
     setDisplayed("");
@@ -45,20 +44,18 @@ export function TypewriterText({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className={`flex ${isAgent ? "justify-start" : "justify-end"}`}
     >
-      <div
-        className={`max-w-[85%] ${isAgent ? "pr-8" : "pl-8"}`}
-      >
+      <div className={`${isAgent ? "pr-12" : "pl-12"}`}>
         {/* Role label */}
         <span
-          className="text-[10px] uppercase tracking-widest block mb-1.5"
+          className="text-[9px] uppercase tracking-widest block mb-1"
           style={{
             color: isAgent ? "var(--accent)" : "var(--text-muted)",
             letterSpacing: "0.15em",
+            opacity: 0.7,
           }}
         >
           {isAgent ? "Guide" : "You"}
@@ -66,24 +63,21 @@ export function TypewriterText({
 
         {/* Message text */}
         <p
-          className="text-base leading-relaxed"
+          className="leading-relaxed"
           style={{
-            color: isAgent ? "var(--text-primary)" : "var(--text-secondary)",
-            fontFamily: isAgent
-              ? "var(--font-geist-sans), Georgia, serif"
-              : "var(--font-geist-sans), system-ui, sans-serif",
-            fontWeight: isAgent ? 300 : 400,
-            fontSize: isAgent ? "1.05rem" : "0.95rem",
-            letterSpacing: isAgent ? "0.01em" : "0",
-            fontStyle: isAgent ? "normal" : "normal",
+            color: isAgent ? "var(--text-secondary)" : "var(--text-muted)",
+            fontWeight: 300,
+            fontSize: isAgent ? "0.85rem" : "0.8rem",
+            letterSpacing: "0.01em",
+            lineHeight: 1.7,
           }}
         >
           {displayed}
           {!done && (
             <motion.span
-              className="inline-block w-[2px] h-[1.1em] ml-[1px] align-text-bottom"
-              style={{ background: "var(--accent)" }}
-              animate={{ opacity: [1, 0, 1] }}
+              className="inline-block w-[1.5px] h-[0.9em] ml-[1px] align-text-bottom"
+              style={{ background: "var(--accent)", opacity: 0.6 }}
+              animate={{ opacity: [0.6, 0, 0.6] }}
               transition={{ duration: 0.8, repeat: Infinity }}
             />
           )}

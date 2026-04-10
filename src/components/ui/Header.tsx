@@ -1,11 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase";
 
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading } = useAuth();
+
+  // Hide header during active session for cleaner experience
+  if (pathname === "/session") return null;
 
   return (
     <header
@@ -44,21 +49,32 @@ export function Header() {
         ) : user ? (
           <>
             <button
-              onClick={() => router.push("/plan")}
+              onClick={() => router.push("/")}
               className="text-xs px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:opacity-80"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: pathname === "/" ? "var(--accent)" : "var(--text-muted)" }}
             >
-              Plan
+              Home
             </button>
             <button
               onClick={() => router.push("/history")}
               className="text-xs px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:opacity-80"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: pathname === "/history" ? "var(--accent)" : "var(--text-muted)" }}
             >
               History
             </button>
             <button
-              onClick={() => router.push("/history")}
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                router.push("/");
+              }}
+              className="text-xs px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:opacity-80"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Sign Out
+            </button>
+            <button
+              onClick={() => router.push("/")}
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium cursor-pointer"
               style={{
                 background: "var(--accent-soft)",

@@ -7,5 +7,9 @@ export default function SessionLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <ConversationProvider>{children}</ConversationProvider>;
+  return (
+    <ConversationProvider>
+      <div style={{ marginTop: "-57px" }}>{children}</div>
+    </ConversationProvider>
+  );
 }

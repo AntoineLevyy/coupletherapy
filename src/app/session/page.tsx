@@ -29,6 +29,7 @@ export default function SessionPage() {
   const sessionStarted = useRef(false);
   const phaseRef = useRef<SessionPhase>("connecting");
   const userEndedRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const hasReceivedMessage = useRef(false);
   const connectedAt = useRef<number | null>(null);
 
@@ -233,18 +234,26 @@ export default function SessionPage() {
 
     try {
       console.log("[ElevenLabs] Starting session, type:", sessionType, "prior sessions:", priorSyntheses.length);
-      conversation.startSession({
+      console.log("[ElevenLabs] Agent ID:", agentId);
+      console.log("[ElevenLabs] Prompt length:", systemPrompt.length, "chars");
+
+      // Start with overrides for returning users, basic connection for first-timers
+      const sessionConfig: Record<string, unknown> = {
         agentId,
-        connectionType: "websocket",
-        overrides: {
+        connectionType: "websocket" as const,
+      };
+
+      // Only add overrides if we have context to inject
+      if (priorSyntheses.length > 0 || sessionType !== "initial") {
+        sessionConfig.overrides = {
           agent: {
-            prompt: {
-              prompt: systemPrompt,
-            },
+            prompt: { prompt: systemPrompt },
             firstMessage,
           },
-        },
-      });
+        };
+      }
+
+      conversation.startSession(sessionConfig as Parameters<typeof conversation.startSession>[0]);
     } catch (err) {
       console.error("[ElevenLabs] Start failed:", err);
       setConnectionError("Failed to connect. Please try again.");
@@ -302,6 +311,13 @@ export default function SessionPage() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
+  // Auto-scroll conversation to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [transcript]);
+
   const remaining = Math.max(0, SESSION_LIMIT - elapsed);
   const isLowTime = remaining <= 120; // last 2 minutes
 
@@ -315,15 +331,15 @@ export default function SessionPage() {
         }}
       />
 
-      {/* Top bar */}
+      {/* Top bar — sits below the fixed header */}
       <div
-        className="relative z-10 flex items-center justify-between px-6 py-4"
-        style={{ borderBottom: "1px solid var(--border)" }}
+        className="relative z-10 flex items-center justify-between px-6 py-3"
+        style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-primary)" }}
       >
         <div className="flex items-center gap-4">
           <span
-            className="text-sm tabular-nums"
-            style={{ color: isLowTime && phase === "active" ? "var(--warning)" : "var(--text-muted)" }}
+            className="text-sm font-medium tabular-nums"
+            style={{ color: isLowTime && phase === "active" ? "var(--warning)" : "var(--text-secondary)" }}
           >
             {phase === "active" && `${formatTime(remaining)} remaining`}
             {phase === "connecting" && "Connecting..."}
@@ -358,7 +374,7 @@ export default function SessionPage() {
       </div>
 
       {/* Main content */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
+      <div className="relative z-10 flex-1 flex flex-col items-start justify-center px-6 md:px-12 overflow-hidden">
         <AnimatePresence mode="wait">
           {/* Connecting state */}
           {phase === "connecting" && (
@@ -391,54 +407,25 @@ export default function SessionPage() {
           {(phase === "active" || phase === "ending") && (
             <motion.div
               key="active"
-              className="flex flex-col md:flex-row items-center md:items-start gap-8 w-full max-w-4xl"
+              className="flex flex-col md:flex-row items-stretch gap-8 w-full max-w-5xl"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
             >
-              {/* Left: conversation text */}
-              <div className="flex-1 w-full md:order-1 order-2 min-h-[200px]">
-                <div className="space-y-6 max-w-xl">
-                  {/* Show last few messages with typewriter for the latest */}
-                  {transcript.slice(-4).map((entry, i, arr) => {
-                    const isLatest = i === arr.length - 1;
-                    return isLatest ? (
-                      <TypewriterText
-                        key={`${transcript.length}-${i}`}
-                        text={entry.text}
-                        role={entry.role}
-                        speed={entry.role === "agent" ? 18 : 8}
-                      />
-                    ) : (
-                      <motion.div
-                        key={`${transcript.length - arr.length + i}`}
-                        className={`flex ${entry.role === "agent" ? "justify-start" : "justify-end"}`}
-                        initial={{ opacity: 0.4 }}
-                        animate={{ opacity: 0.4 }}
-                      >
-                        <div className={`max-w-[85%] ${entry.role === "agent" ? "pr-8" : "pl-8"}`}>
-                          <span
-                            className="text-[10px] uppercase tracking-widest block mb-1.5"
-                            style={{
-                              color: entry.role === "agent" ? "var(--accent)" : "var(--text-muted)",
-                              letterSpacing: "0.15em",
-                            }}
-                          >
-                            {entry.role === "agent" ? "Guide" : "You"}
-                          </span>
-                          <p
-                            className="text-sm leading-relaxed"
-                            style={{
-                              color: "var(--text-muted)",
-                              fontWeight: 300,
-                            }}
-                          >
-                            {entry.text}
-                          </p>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
+              {/* Left: conversation text — newest at top */}
+              <div
+                ref={scrollRef}
+                className="flex-1 w-full md:order-1 order-2 overflow-y-auto max-h-[calc(100vh-200px)] pr-2"
+              >
+                <div className="max-w-lg py-4">
+                  {transcript.length > 0 && (
+                    <TypewriterText
+                      key={`latest-${transcript.length}`}
+                      text={transcript[transcript.length - 1].text}
+                      role={transcript[transcript.length - 1].role}
+                      speed={transcript[transcript.length - 1].role === "agent" ? 18 : 8}
+                    />
+                  )}
 
                   {/* Listening indicator */}
                   {podState === "listening" && phase === "active" && transcript.length > 0 && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -121,8 +121,8 @@ export default function DashboardPage() {
   const [loadingMessage, setLoadingMessage] = useState("Analyzing your conversation...");
   const [error, setError] = useState<string | null>(null);
   const [isReadingAloud, setIsReadingAloud] = useState(false);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Synthesize on mount
   useEffect(() => {
@@ -161,107 +161,84 @@ export default function DashboardPage() {
     synthesize();
   }, [router]);
 
-  // Migrate free session to Supabase when user is logged in
+  // Save session to Supabase when user is logged in
   useEffect(() => {
     if (authLoading || !user || !synthesis) return;
     const session = loadSession();
     if (!session) return;
 
-    async function migrateToSupabase() {
-      const supabase = createClient();
+    const migrationKey = `saved-${session.startedAt}`;
+    if (localStorage.getItem(migrationKey)) return;
 
-      // Check if we already migrated this session
-      const migrationKey = `migrated-${session!.startedAt}`;
-      if (localStorage.getItem(migrationKey)) return;
-
+    async function saveToSupabase() {
       try {
-        // Find the user's active couple (if any)
-        let coupleId: string | null = null;
-        const { data: coupleData } = await supabase
-          .from("couples")
-          .select("id")
-          .eq("status", "active")
-          .or(`partner_a.eq.${user!.id},partner_b.eq.${user!.id}`)
-          .limit(1)
-          .single();
-
-        if (coupleData) coupleId = coupleData.id;
-
-        // Create session record
-        const { data: sessionRecord, error: sessionError } = await supabase
-          .from("sessions")
-          .insert({
-            user_id: user!.id,
-            couple_id: coupleId,
+        const res = await fetch("/api/save-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             mode: session!.mode,
-            session_type: session!.sessionType || "initial",
-            started_at: session!.startedAt,
-            completed_at: session!.completedAt,
-            status: "completed",
-          })
-          .select("id")
-          .single();
-
-        if (sessionError || !sessionRecord) {
-          console.error("Failed to save session:", sessionError);
-          return;
-        }
-
-        // Save transcript (private to this user only — RLS enforced)
-        await supabase.from("transcripts").insert({
-          session_id: sessionRecord.id,
-          user_id: user!.id,
-          entries: session!.transcript,
+            sessionType: session!.sessionType || "initial",
+            startedAt: session!.startedAt,
+            completedAt: session!.completedAt,
+            transcript: session!.transcript,
+            synthesis,
+          }),
         });
 
-        // Save synthesis (linked to couple so both partners' AI can access it)
-        await supabase.from("syntheses").insert({
-          session_id: sessionRecord.id,
-          user_id: user!.id,
-          couple_id: coupleId,
-          synthesis_type: "individual",
-          data: synthesis,
-          voice_script: synthesis!.voiceScript,
-        });
-
-        // Save dimension scores for longitudinal tracking
-        if (synthesis!.dimensions) {
-          const dimRecords = synthesis!.dimensions.map((d) => ({
-            session_id: sessionRecord.id,
-            user_id: user!.id,
-            dimension_id: d.id,
-            dimension_name: d.name,
-            score: d.score,
-            insight: d.insight,
-            evidence: d.evidence,
-          }));
-          await supabase.from("dimension_scores").insert(dimRecords);
+        if (res.ok) {
+          localStorage.setItem(migrationKey, "true");
+          console.log("[Save] Session saved to Supabase (including plan items)");
+        } else {
+          const data = await res.json();
+          console.error("[Save] Failed:", data.error);
         }
-
-        // Mark as migrated
-        localStorage.setItem(migrationKey, "true");
-        console.log("[Migration] Free session saved to Supabase");
       } catch (err) {
-        console.error("Migration error:", err);
+        console.error("[Save] Error:", err);
       }
     }
-    migrateToSupabase();
+    saveToSupabase();
   }, [user, authLoading, synthesis]);
 
-  // Voice readback using ElevenLabs TTS
+  // Voice readback using ElevenLabs TTS API
   const handleReadAloud = useCallback(async () => {
     if (!synthesis?.voiceScript) return;
-    if (isReadingAloud && audioElement) { audioElement.pause(); audioElement.currentTime = 0; setIsReadingAloud(false); return; }
+
+    // If already playing, stop
+    if (isReadingAloud && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsReadingAloud(false);
+      return;
+    }
+
+    // Prevent double-click while loading
+    if (audioLoading) return;
+
     setAudioLoading(true);
+
     try {
-      const res = await fetch("/api/voice-report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: synthesis.voiceScript }) });
+      const res = await fetch("/api/voice-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: synthesis.voiceScript }),
+      });
+
       if (!res.ok) throw new Error("Voice generation failed");
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.onended = () => { setIsReadingAloud(false); URL.revokeObjectURL(url); };
-      audio.onerror = () => { setIsReadingAloud(false); URL.revokeObjectURL(url); };
-      setAudioElement(audio);
+
+      audio.onended = () => {
+        setIsReadingAloud(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setIsReadingAloud(false);
+        URL.revokeObjectURL(url);
+      };
+
+      audioRef.current = audio;
       setIsReadingAloud(true);
       await audio.play();
     } catch (err) {
@@ -270,9 +247,16 @@ export default function DashboardPage() {
     } finally {
       setAudioLoading(false);
     }
-  }, [synthesis, isReadingAloud, audioElement]);
+  }, [synthesis, isReadingAloud, audioLoading]);
 
-  useEffect(() => { return () => { if (audioElement) audioElement.pause(); }; }, [audioElement]);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
   function handleNewSession() { window.speechSynthesis.cancel(); clearSession(); router.push("/"); }
   function handleRetry() {
@@ -310,7 +294,40 @@ export default function DashboardPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex justify-center mb-6"><ListeningPod state="idle" size="sm" /></div>
+          {/* Pod — clickable to read results */}
+          <div className="flex justify-center mb-3">
+            <button
+              onClick={synthesis?.voiceScript ? handleReadAloud : undefined}
+              disabled={!synthesis?.voiceScript}
+              className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none"
+            >
+              <ListeningPod state={audioLoading ? "thinking" : isReadingAloud ? "speaking" : "idle"} size="md" />
+            </button>
+          </div>
+
+          {/* Subtle read prompt below pod */}
+          {synthesis?.voiceScript && (
+            <motion.button
+              className="mb-6 px-5 py-2 rounded-full cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={audioLoading}
+              style={{
+                background: isReadingAloud ? "var(--accent)" : "var(--accent-soft)",
+                color: isReadingAloud ? "var(--bg-primary)" : "var(--accent)",
+                border: `1px solid ${isReadingAloud ? "var(--accent)" : "var(--accent)"}`,
+              }}
+              onClick={handleReadAloud}
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <span className="text-sm font-medium">
+                {audioLoading ? "Connecting..." : isReadingAloud ? "Stop Reading" : "Tap to Listen"}
+              </span>
+            </motion.button>
+          )}
+
           <h1 className="text-3xl md:text-4xl font-light tracking-tight" style={{ color: "var(--text-primary)" }}>Your Relationship Snapshot</h1>
           <p className="mt-3 text-lg" style={{ color: "var(--text-secondary)" }}>{synthesis.summary}</p>
 
@@ -322,43 +339,6 @@ export default function DashboardPage() {
           )}
 
           <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>This is a coaching reflection, not a clinical assessment.</p>
-
-          {synthesis.voiceScript && (
-            <motion.div
-              className="mt-8"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              <button
-                onClick={handleReadAloud}
-                disabled={audioLoading}
-                className="inline-flex items-center gap-4 px-6 py-3 rounded-2xl cursor-pointer transition-all hover:scale-[1.01]"
-                style={{
-                  background: "var(--bg-elevated)",
-                  border: `1px solid ${isReadingAloud ? "var(--accent)" : "var(--border)"}`,
-                }}
-              >
-                <div className="relative flex-shrink-0">
-                  <ListeningPod state={audioLoading ? "thinking" : isReadingAloud ? "speaking" : "idle"} size="sm" />
-                </div>
-                <div className="text-left">
-                  <span
-                    className="text-sm font-medium block"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {audioLoading ? "Generating voice..." : isReadingAloud ? "Stop Reading" : "Read Our Results"}
-                  </span>
-                  <span
-                    className="text-xs"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    {audioLoading ? "Preparing your guide's voice" : isReadingAloud ? "Tap to stop" : "Listen to your guide summarize your snapshot"}
-                  </span>
-                </div>
-              </button>
-            </motion.div>
-          )}
         </motion.div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -516,14 +496,7 @@ export default function DashboardPage() {
 
         {/* Footer */}
         <motion.div className="mt-12 flex flex-col items-center gap-4 pb-12" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
-          <div className="flex gap-3">
-            <Button onClick={handleNewSession}>Start a New Session</Button>
-            {synthesis.voiceScript && (
-              <Button variant="secondary" onClick={handleReadAloud}>
-                {audioLoading ? "Loading..." : isReadingAloud ? "Stop" : "Listen to Summary"}
-              </Button>
-            )}
-          </div>
+          <Button onClick={handleNewSession}>Start a New Session</Button>
           <p className="text-xs max-w-md text-center" style={{ color: "var(--text-muted)" }}>
             This reflection is based on a single coaching conversation. For deeper support, we recommend connecting with a licensed relationship professional.
           </p>

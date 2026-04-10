@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createClient } from "@/lib/supabase";
+import { loadSession } from "@/lib/store";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -21,6 +22,45 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/**
+ * Migrate a free session from localStorage to Supabase via API.
+ * Runs once after login/signup if there's unsaved session data.
+ */
+async function migrateLocalSession() {
+  const sessionData = loadSession();
+  if (!sessionData?.synthesis) return;
+
+  const migrationKey = `saved-${sessionData.startedAt}`;
+  if (typeof window !== "undefined" && localStorage.getItem(migrationKey)) return;
+
+  try {
+    const res = await fetch("/api/save-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: sessionData.mode,
+        sessionType: sessionData.sessionType || "initial",
+        startedAt: sessionData.startedAt,
+        completedAt: sessionData.completedAt,
+        transcript: sessionData.transcript,
+        synthesis: sessionData.synthesis,
+      }),
+    });
+
+    if (res.ok) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(migrationKey, "true");
+      }
+      console.log("[Migration] Free session saved to Supabase");
+    } else {
+      const data = await res.json();
+      console.error("[Migration] Failed:", data.error);
+    }
+  } catch (err) {
+    console.error("[Migration] Error:", err);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -28,20 +68,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Migrate local session data when user signs in
+      if (session?.user) {
+        migrateLocalSession();
+      }
     });
 
     return () => subscription.unsubscribe();

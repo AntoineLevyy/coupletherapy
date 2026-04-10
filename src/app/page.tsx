@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ListeningPod } from "@/components/pod/ListeningPod";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useAuth } from "@/lib/auth-context";
+import { LoggedInHome } from "@/components/LoggedInHome";
 
 const PROCESS_STEPS = [
   {
@@ -62,6 +64,23 @@ const FEATURES = [
 
 export default function LandingPage() {
   const router = useRouter();
+  const { user, loading } = useAuth();
+
+  // Show loading state briefly
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <ListeningPod state="thinking" size="sm" />
+      </main>
+    );
+  }
+
+  // Logged-in users get their dashboard
+  if (user) {
+    return <LoggedInHome />;
+  }
+
+  // Anonymous users get the landing page
 
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -368,7 +387,9 @@ export default function LandingPage() {
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.8 }}
           >
-            <ListeningPod state="idle" size="sm" />
+            <div className="flex justify-center">
+              <ListeningPod state="idle" size="sm" />
+            </div>
             <h2
               className="text-2xl md:text-3xl font-light tracking-tight mt-6"
               style={{ color: "var(--text-primary)" }}

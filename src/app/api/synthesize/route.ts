@@ -138,7 +138,7 @@ Return ONLY valid JSON matching this exact structure:
       }
     ]
   },
-  "voiceScript": "60-90 second script for the guide to read aloud summarizing results. Warm, specific to this conversation, honest about what's a first impression vs clear signal. End with top 1-2 things to focus on."
+  "voiceScript": "60-90 second script for the guide to read aloud summarizing results. Warm, specific to this conversation, honest about what's a first impression vs clear signal. Mention the top 1-2 things to focus on. MUST end with something close to: 'Read your full review below, along with your 8-day coaching plan. Create an account and invite your partner to continue working on your relationship.'"
 }`;
 
 export async function POST(request: Request) {
