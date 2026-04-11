@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase";
 import { loadSession } from "@/lib/store";
+import { initPostHog, posthog } from "@/lib/posthog";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -68,10 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
+    initPostHog();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      if (session?.user) {
+        posthog.identify(session.user.id, { email: session.user.email });
+      }
     });
 
     const {
@@ -81,9 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       setLoading(false);
 
-      // Migrate local session data when user signs in
+      // Identify user in PostHog + migrate local session
       if (session?.user) {
+        posthog.identify(session.user.id, { email: session.user.email });
         migrateLocalSession();
+      } else {
+        posthog.reset();
       }
     });
 
