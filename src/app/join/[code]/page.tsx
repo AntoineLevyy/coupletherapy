@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -23,15 +23,7 @@ export default function InvitePage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // If already logged in, skip straight to linking
-  useEffect(() => {
-    if (authLoading) return;
-    if (user && step === "welcome") {
-      linkPartner();
-    }
-  }, [user, authLoading]);
-
-  async function linkPartner() {
+  const linkPartner = useCallback(async () => {
     setStep("linking");
     setError(null);
 
@@ -54,7 +46,15 @@ export default function InvitePage() {
       setError("Connection error. Please try again.");
       setStep("error");
     }
-  }
+  }, [code]);
+
+  // If already logged in, skip straight to linking
+  useEffect(() => {
+    if (authLoading) return;
+    if (user && step === "welcome") {
+      void Promise.resolve().then(linkPartner);
+    }
+  }, [user, authLoading, step, linkPartner]);
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();

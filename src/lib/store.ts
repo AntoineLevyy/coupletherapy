@@ -8,6 +8,7 @@ import type { SessionMode } from "./framework";
 export interface SessionData {
   mode: SessionMode;
   sessionType?: string;
+  focusMoment?: string;
   startedAt: string;
   completedAt?: string;
   transcript: TranscriptEntry[];

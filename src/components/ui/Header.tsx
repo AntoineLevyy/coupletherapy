@@ -38,7 +38,7 @@ export function Header() {
           className="text-sm font-light tracking-wide"
           style={{ color: "var(--text-primary)" }}
         >
-          Couple Therapy
+          HappyCouple
         </span>
       </button>
 
@@ -86,7 +86,7 @@ export function Header() {
           </>
         ) : (
           <button
-            onClick={() => router.push("/auth/login")}
+            onClick={() => router.push("/auth/login?mode=login")}
             className="text-xs px-4 py-2 rounded-full cursor-pointer transition-all hover:scale-[1.02]"
             style={{
               border: "1px solid var(--border)",

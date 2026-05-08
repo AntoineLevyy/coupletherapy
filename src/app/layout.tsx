@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
 import { Header } from "@/components/ui/Header";
+import { ConversationRoot } from "@/components/ConversationRoot";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +16,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Couple Therapy — Relationship Coaching",
+  title: "HappyCouple — Relationship Coaching",
   description:
-    "A voice-based, self-guided relationship coaching experience. Reflect on your patterns, communicate more clearly, and build a plan together.",
+    "Handle your relationship better, one moment at a time. Get clarity on what is underneath, what to say next, and how to move forward.",
 };
 
 export default function RootLayout({
@@ -32,8 +33,10 @@ export default function RootLayout({
     >
       <body className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
         <AuthProvider>
-          <Header />
-          <div className="pt-[57px] flex-1 flex flex-col">{children}</div>
+          <ConversationRoot>
+            <Header />
+            <div className="pt-[57px] flex-1 flex flex-col">{children}</div>
+          </ConversationRoot>
         </AuthProvider>
       </body>
     </html>

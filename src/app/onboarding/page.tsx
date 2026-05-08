@@ -15,10 +15,16 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("disclaimer");
   const [accepted, setAccepted] = useState(false);
+  const [focusMoment] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    return params.get("moment") || "";
+  });
 
   function handleModeSelect(mode: SessionMode) {
     saveSession({
       mode,
+      focusMoment: focusMoment.trim() || undefined,
       startedAt: new Date().toISOString(),
       transcript: [],
     });
@@ -58,7 +64,7 @@ export default function OnboardingPage() {
               <div className="space-y-4 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 <p>
                   <strong style={{ color: "var(--text-primary)" }}>This is not therapy.</strong>{" "}
-                  Couple Therapy is an AI-powered relationship coaching and education tool.
+                  HappyCouple is an AI-powered relationship coaching and education tool.
                   It helps you reflect on patterns, build communication skills, and create
                   actionable plans — informed by peer-reviewed relationship science.
                 </p>
@@ -141,8 +147,19 @@ export default function OnboardingPage() {
               className="text-center mb-10"
               style={{ color: "var(--text-secondary)" }}
             >
-              Choose the mode that feels right for where you are.
+              Choose whether you want to work through this privately or together.
             </p>
+
+            {focusMoment && (
+              <Card className="mb-6 max-w-xl mx-auto">
+                <p className="text-xs uppercase tracking-wide mb-2" style={{ color: "var(--text-muted)" }}>
+                  Your starting moment
+                </p>
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  {focusMoment}
+                </p>
+              </Card>
+            )}
 
             <div className="grid gap-4 md:grid-cols-2 max-w-xl mx-auto">
               {SESSION_MODES.map((mode) => (

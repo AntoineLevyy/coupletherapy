@@ -11,7 +11,10 @@ type Mode = "login" | "signup";
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>(() => {
+    if (typeof window === "undefined") return "signup";
+    return new URLSearchParams(window.location.search).get("mode") === "login" ? "login" : "signup";
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

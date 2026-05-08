@@ -11,7 +11,7 @@ import { CRISIS_RESOURCES } from "@/lib/framework";
 import { loadSession, saveSession, type SynthesisData } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase";
-import { getSystemPrompt, FIRST_MESSAGE_TOGETHER, FIRST_MESSAGE_SOLO } from "@/lib/system-prompt";
+import { getSystemPrompt, getFirstMessageTogether, getFirstMessageSolo } from "@/lib/system-prompt";
 import { buildPriorContext, getStateOfUnionPrompt, getCheckInPrompt } from "@/lib/session-prompts";
 
 type SessionPhase = "connecting" | "active" | "crisis" | "ending" | "complete";
@@ -220,7 +220,7 @@ export default function SessionPage() {
     } else {
       // Initial or ad-hoc session — differentiate Together vs Solo
       const normalizedMode: "together" | "solo" = mode === "together" ? "together" : "solo";
-      systemPrompt = getSystemPrompt(normalizedMode);
+      systemPrompt = getSystemPrompt(normalizedMode, session?.focusMoment);
       if (priorSyntheses.length > 0) {
         // Returning user — inject context into the base prompt
         systemPrompt += `\n\n${priorContext}`;
@@ -228,7 +228,9 @@ export default function SessionPage() {
           ? "Welcome back, both of you. I have context from our previous conversations, so we can build on where we left off. What's been happening since we last spoke?"
           : "Welcome back. I have context from our previous conversations, so we can pick up where things are. What's been on your mind since we last spoke?";
       } else {
-        firstMessage = normalizedMode === "together" ? FIRST_MESSAGE_TOGETHER : FIRST_MESSAGE_SOLO;
+        firstMessage = normalizedMode === "together"
+          ? getFirstMessageTogether(session?.focusMoment)
+          : getFirstMessageSolo(session?.focusMoment);
       }
     }
 
