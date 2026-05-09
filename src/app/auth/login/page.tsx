@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ListeningPod } from "@/components/pod/ListeningPod";
+import { track } from "@/lib/track";
 
 type Mode = "login" | "signup";
 
@@ -27,6 +28,7 @@ export default function LoginPage() {
     setLoading(true);
 
     if (mode === "signup") {
+      track.signUpStarted();
       const { error } = await signUp(email, password);
       if (error) {
         setError(error);

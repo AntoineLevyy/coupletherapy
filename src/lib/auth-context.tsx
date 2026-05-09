@@ -10,6 +10,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import { loadSession } from "@/lib/store";
 import { initPostHog, posthog } from "@/lib/posthog";
+import { track } from "@/lib/track";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -53,6 +54,7 @@ async function migrateLocalSession() {
         localStorage.setItem(migrationKey, "true");
       }
       console.log("[Migration] Free session saved to Supabase");
+      track.savedReportRestoredAfterSignup();
     } else {
       const data = await res.json();
       console.error("[Migration] Failed:", data.error);
@@ -107,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
+    if (!error) track.signUpCompleted();
     return { error: error?.message ?? null };
   }
 
@@ -115,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
     });
+    if (!error) track.signInCompleted();
     return { error: error?.message ?? null };
   }
 

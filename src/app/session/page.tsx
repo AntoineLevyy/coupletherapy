@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase";
 import { getSystemPrompt, getFirstMessageTogether, getFirstMessageSolo } from "@/lib/system-prompt";
 import { buildPriorContext, getStateOfUnionPrompt, getCheckInPrompt } from "@/lib/session-prompts";
+import { track } from "@/lib/track";
 
 type SessionPhase = "connecting" | "active" | "crisis" | "ending" | "complete";
 
@@ -31,6 +32,8 @@ export default function SessionPage() {
   const userEndedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasReceivedMessage = useRef(false);
+  const firstUserMessageTracked = useRef(false);
+  const firstCoachResponseTracked = useRef(false);
   const connectedAt = useRef<number | null>(null);
 
   // Keep phaseRef in sync
@@ -41,6 +44,7 @@ export default function SessionPage() {
   const conversation = useConversation({
     onConnect: () => {
       console.log("[ElevenLabs] Connected");
+      track.voiceSessionStarted({ source: "session_page" });
       connectedAt.current = Date.now();
       setPhase("active");
       setPodState("speaking");
@@ -51,6 +55,7 @@ export default function SessionPage() {
       console.log("[ElevenLabs] Disconnected, userEnded:", userEndedRef.current, "phase:", phaseRef.current, "duration:", sessionDuration, "hadMessages:", hasReceivedMessage.current);
 
       if (userEndedRef.current) {
+        track.sessionEnded(sessionDuration, transcript.length);
         // User explicitly ended — go to ending screen
         setPhase("ending");
         setPodState("idle");
@@ -75,12 +80,22 @@ export default function SessionPage() {
       const text = props.message;
       const role = props.source === "ai" ? "agent" as const : "user" as const;
       if (text) {
+        if (role === "user" && !firstUserMessageTracked.current) {
+          firstUserMessageTracked.current = true;
+          track.firstUserMessageSent({ source: "session_page", message_count: transcript.length + 1 });
+        }
+        if (role === "agent" && !firstCoachResponseTracked.current) {
+          firstCoachResponseTracked.current = true;
+          track.firstCoachResponseReceived({ source: "session_page", message_count: transcript.length + 1 });
+        }
         setTranscript((prev) => [...prev, { role, text }]);
       }
     },
     onError: (message) => {
       console.error("[ElevenLabs] Error:", message);
       const errorStr = typeof message === "string" ? message : "Connection error";
+      track.voiceSessionFailed(errorStr, { source: "session_page" });
+      track.sessionError(errorStr);
       setConnectionError(errorStr);
       // If we haven't properly connected yet, reset to connecting so user sees error
       if (!hasReceivedMessage.current) {
@@ -151,6 +166,7 @@ export default function SessionPage() {
       await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setConnectionError("Microphone access is required. Please allow microphone access and try again.");
+      track.voiceSessionFailed("microphone_access_denied", { source: "session_page" });
       sessionStarted.current = false;
       return;
     }
@@ -236,6 +252,7 @@ export default function SessionPage() {
 
     try {
       console.log("[ElevenLabs] Starting session, type:", sessionType, "prior sessions:", priorSyntheses.length);
+      track.sessionStarted(mode, sessionType);
       console.log("[ElevenLabs] Agent ID:", agentId);
       console.log("[ElevenLabs] Prompt length:", systemPrompt.length, "chars");
 
@@ -252,6 +269,8 @@ export default function SessionPage() {
       } as Parameters<typeof conversation.startSession>[0]);
     } catch (err) {
       console.error("[ElevenLabs] Start failed:", err);
+      const errorText = err instanceof Error ? err.message : "session_start_failed";
+      track.voiceSessionFailed(errorText, { source: "session_page" });
       setConnectionError("Failed to connect. Please try again.");
       sessionStarted.current = false;
     }
@@ -268,6 +287,7 @@ export default function SessionPage() {
 
   // User explicitly ends the session
   function handleUserEnd() {
+    track.endAndSummarizeClicked({ source: "session_page", message_count: transcript.length });
     userEndedRef.current = true;
     setPhase("ending");
     try {

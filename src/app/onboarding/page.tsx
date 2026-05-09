@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { SESSION_MODES, type SessionMode } from "@/lib/framework";
 import { saveSession } from "@/lib/store";
 import { ListeningPod } from "@/components/pod/ListeningPod";
+import { track } from "@/lib/track";
 
 type Step = "disclaimer" | "mode";
 
@@ -22,6 +23,8 @@ export default function OnboardingPage() {
   });
 
   function handleModeSelect(mode: SessionMode) {
+    track.modeSelected(mode);
+    track.presenceAnswered(mode === "solo" ? "solo" : "together");
     saveSession({
       mode,
       focusMoment: focusMoment.trim() || undefined,
@@ -120,7 +123,7 @@ export default function OnboardingPage() {
               <Button
                 size="lg"
                 disabled={!accepted}
-                onClick={() => setStep("mode")}
+                onClick={() => { track.disclaimerAccepted(); setStep("mode"); }}
               >
                 Continue
               </Button>

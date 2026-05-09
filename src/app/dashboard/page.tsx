@@ -15,6 +15,7 @@ import {
 } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase";
+import { track } from "@/lib/track";
 
 // ── Helper Components ──
 
@@ -136,6 +137,7 @@ export default function DashboardPage() {
     }
 
     async function synthesize() {
+      track.reportGenerationStarted({ source: "dashboard_synthesis", message_count: session!.transcript.length });
       const messages = ["Analyzing your conversation...", "Identifying patterns...", "Assessing confidence levels...", "Building your personalized plan..."];
       let msgIdx = 0;
       const interval = setInterval(() => { msgIdx = (msgIdx + 1) % messages.length; setLoadingMessage(messages[msgIdx]); }, 3000);
@@ -149,17 +151,28 @@ export default function DashboardPage() {
         clearInterval(interval);
         if (!res.ok) { const data = await res.json(); throw new Error(data.error || "Synthesis failed"); }
         const data: SynthesisData = await res.json();
+        track.reportGenerationSucceeded({ source: "dashboard_synthesis", report_generation_mode: "llm" });
         setSynthesis(data);
         saveSession({ ...session!, synthesis: data });
       } catch (err) {
         clearInterval(interval);
-        setError(err instanceof Error ? err.message : "Failed to analyze. Please try again.");
+        const message = err instanceof Error ? err.message : "Failed to analyze. Please try again.";
+        track.reportGenerationFailed(message, { source: "dashboard_synthesis" });
+        setError(message);
       } finally {
         setLoading(false);
       }
     }
     synthesize();
   }, [router]);
+
+  // Save session to Supabase when user is logged in
+  useEffect(() => {
+    if (!synthesis) return;
+    const session = loadSession();
+    track.reportViewed(session?.startedAt, { source: "dashboard" });
+    track.synthesisViewed();
+  }, [synthesis]);
 
   // Save session to Supabase when user is logged in
   useEffect(() => {
@@ -215,6 +228,7 @@ export default function DashboardPage() {
     if (audioLoading) return;
 
     setAudioLoading(true);
+    track.voiceReadbackStarted();
 
     try {
       const res = await fetch("/api/voice-report", {

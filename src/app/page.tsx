@@ -9,6 +9,7 @@ import { useConversation } from "@elevenlabs/react";
 import { getFirstMessageUndecided, getSystemPrompt } from "@/lib/system-prompt";
 import { buildMomentReportPreview, shouldOfferReportFromUserMessage, type MomentReportPreview } from "@/lib/moment-report";
 import { saveSession, type SynthesisData } from "@/lib/store";
+import { track } from "@/lib/track";
 
 const STARTER_TRANSCRIPT: TranscriptMessage[] = [];
 
@@ -197,10 +198,16 @@ export default function LandingPage() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [reportGenerationNote, setReportGenerationNote] = useState("");
   const sessionStartedRef = useRef(false);
+  const firstUserMessageTrackedRef = useRef(false);
+  const firstCoachResponseTrackedRef = useRef(false);
   const rotatingPrompts = Array.from({ length: 5 }, (_, index) =>
     PROMPT_ROTATION[(promptOffset + index) % PROMPT_ROTATION.length]
   );
   const visibleTranscript = showFullTranscript ? transcript : transcript.slice(-2);
+
+  useEffect(() => {
+    track.landingPageViewed();
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -212,6 +219,7 @@ export default function LandingPage() {
 
   const conversation = useConversation({
     onConnect: () => {
+      track.voiceSessionStarted({ source: "landing_inline" });
       setVoiceStatus("active");
       setAgentMode("speaking");
       setVoiceError("");
@@ -229,15 +237,25 @@ export default function LandingPage() {
         text,
       };
       setTranscript((previous) => {
+        if (nextMessage.speaker === "You" && !firstUserMessageTrackedRef.current) {
+          firstUserMessageTrackedRef.current = true;
+          track.firstUserMessageSent({ source: "landing_inline", message_count: previous.length + 1 });
+        }
+        if (nextMessage.speaker === "HappyCouple" && !firstCoachResponseTrackedRef.current) {
+          firstCoachResponseTrackedRef.current = true;
+          track.firstCoachResponseReceived({ source: "landing_inline", message_count: previous.length + 1 });
+        }
         const nextTranscript = [...previous, nextMessage];
         if (nextMessage.speaker === "You" && shouldOfferReportFromUserMessage(text)) {
-          window.setTimeout(() => { void completeMomentSession(nextTranscript); }, 400);
+          track.endedByNaturalSummaryRequest({ source: "landing_inline", message_count: nextTranscript.length });
+          window.setTimeout(() => { void completeMomentSession(nextTranscript, "natural_summary_request"); }, 400);
         }
         return nextTranscript;
       });
     },
     onError: (message) => {
       const errorText = typeof message === "string" ? message : "Voice connection failed. Try again.";
+      track.voiceSessionFailed(errorText, { source: "landing_inline" });
       setVoiceError(errorText);
       setVoiceStatus("error");
       sessionStartedRef.current = false;
@@ -247,8 +265,9 @@ export default function LandingPage() {
     },
   });
 
-  const startVoiceCapture = useCallback(async (momentOverride?: string) => {
+  const startVoiceCapture = useCallback(async (momentOverride?: string, source = "pod") => {
     if (sessionStartedRef.current) return;
+    track.startVoiceClicked(source);
 
     const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
     if (!agentId) {
@@ -269,6 +288,11 @@ export default function LandingPage() {
     setVoiceStatus("connecting");
     setTranscript(trimmedMoment ? [{ speaker: "You", text: trimmedMoment }] : []);
     setShowFullTranscript(false);
+    firstUserMessageTrackedRef.current = Boolean(trimmedMoment);
+    firstCoachResponseTrackedRef.current = false;
+    if (trimmedMoment) {
+      track.firstUserMessageSent({ source, message_count: 1, seeded_from_prompt: true });
+    }
     sessionStartedRef.current = true;
 
     try {
@@ -285,6 +309,8 @@ export default function LandingPage() {
       } as Parameters<typeof conversation.startSession>[0]);
     } catch (error) {
       console.error("[ElevenLabs] Landing voice start failed:", error);
+      const errorText = error instanceof Error ? error.message : "voice_start_failed";
+      track.voiceSessionFailed(errorText, { source });
       setVoiceStatus("error");
       setVoiceError("Couldn’t connect to the voice coach. Check mic access and try again.");
       sessionStartedRef.current = false;
@@ -311,8 +337,13 @@ export default function LandingPage() {
     setShowFullTranscript(false);
   }
 
-  async function generateMomentReport(sourceTranscript: TranscriptMessage[]) {
+  async function generateMomentReport(sourceTranscript: TranscriptMessage[], trigger: "button" | "natural_summary_request" = "button") {
     const fallbackReport = buildMomentReportPreview(sourceTranscript, focusMoment);
+    track.reportGenerationStarted({
+      source: "landing_inline",
+      trigger,
+      message_count: sourceTranscript.length,
+    });
 
     try {
       const response = await fetch("/api/moment-report", {
@@ -321,16 +352,25 @@ export default function LandingPage() {
         body: JSON.stringify({ transcript: sourceTranscript, focusMoment }),
       });
 
-      if (!response.ok) return fallbackReport;
+      if (!response.ok) {
+        track.reportGenerationSucceeded({ source: "landing_inline", trigger, report_generation_mode: "fallback" });
+        return fallbackReport;
+      }
 
-      return (await response.json()) as MomentReportPreview;
+      const apiReport = (await response.json()) as MomentReportPreview;
+      track.reportGenerationSucceeded({ source: "landing_inline", trigger, report_generation_mode: "llm" });
+      return apiReport;
     } catch (error) {
       console.warn("Moment report API unavailable; using local fallback.", error);
+      track.reportGenerationSucceeded({ source: "landing_inline", trigger, report_generation_mode: "fallback" });
       return fallbackReport;
     }
   }
 
-  async function completeMomentSession(sourceTranscript = transcript) {
+  async function completeMomentSession(
+    sourceTranscript = transcript,
+    trigger: "button" | "natural_summary_request" = "button"
+  ) {
     stopVoiceCapture();
     setInlineSessionActive(false);
     setGuidanceReady(false);
@@ -340,14 +380,16 @@ export default function LandingPage() {
     setReportGenerating(true);
     setReportGenerationNote("Reading the real transcript and preparing your first summary…");
 
-    const report = await generateMomentReport(sourceTranscript);
+    const report = await generateMomentReport(sourceTranscript, trigger);
     setReportPreview(report);
+    track.reportViewed(undefined, { source: "landing_inline", report_generation_trigger: trigger });
     setReportGenerating(false);
     setReportGenerationNote("");
   }
 
   function saveReportAndSignUp() {
     if (!reportPreview) return;
+    track.saveReportClicked({ source: "landing_inline" });
     const now = new Date().toISOString();
     saveSession({
       mode: "solo",
@@ -368,6 +410,8 @@ export default function LandingPage() {
   function startMomentFlow(moment = focusMoment) {
     const trimmed = moment.trim();
     const params = trimmed ? `?moment=${encodeURIComponent(trimmed)}` : "";
+    track.ctaClicked("bottom_moment_flow");
+    track.startTextClicked("bottom_moment_flow");
     router.push(`/onboarding${params}`);
   }
 
@@ -439,7 +483,7 @@ export default function LandingPage() {
           <div className={`flex flex-col items-center text-center transition-all duration-700 ${inlineSessionActive || showPlanPreview ? "lg:col-start-2" : ""} ${inlineSessionActive ? "pt-16 lg:pt-28" : "pt-0 lg:pt-2"}`}>
             <motion.button
               type="button"
-              onClick={() => startVoiceCapture()}
+              onClick={() => startVoiceCapture(undefined, "pod")}
               whileTap={{ y: 12, scale: 0.985 }}
               className="group relative flex h-[220px] w-[220px] md:h-[252px] md:w-[252px] items-center justify-center rounded-[18px] outline-none transition-all duration-300 hover:-translate-y-1"
               style={{
@@ -561,7 +605,7 @@ export default function LandingPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => startVoiceCapture()}
+                      onClick={() => startVoiceCapture(undefined, "pod")}
                       className="rounded-full px-5 py-3 text-sm font-medium transition-opacity hover:opacity-80"
                       style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
                     >
@@ -635,7 +679,7 @@ export default function LandingPage() {
             <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 type="button"
-                onClick={() => startVoiceCapture()}
+                onClick={() => startVoiceCapture(undefined, "pod")}
                 className="rounded-full px-4 py-2.5 text-xs md:text-sm font-medium transition-transform hover:-translate-y-0.5"
                 style={{ background: "var(--accent)", color: "var(--bg-primary)" }}
               >
@@ -643,6 +687,7 @@ export default function LandingPage() {
               </button>
               <a
                 href="#coaching-plan"
+                onClick={() => { track.longTermPlanClicked(); }}
                 className="rounded-full px-4 py-2.5 text-xs md:text-sm font-medium transition-opacity hover:opacity-80"
                 style={{ color: "var(--text-secondary)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}
               >
@@ -673,7 +718,7 @@ export default function LandingPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { void completeMomentSession(); }}
+                  onClick={() => { track.endAndSummarizeClicked({ source: "landing_inline", message_count: transcript.length }); void completeMomentSession(); }}
                   className="mt-4 rounded-full px-4 py-2.5 text-xs font-medium transition-transform hover:-translate-y-0.5"
                   style={{ background: "var(--accent)", color: "var(--bg-primary)" }}
                 >
@@ -756,8 +801,9 @@ export default function LandingPage() {
                   key={`${prompt}-${index}`}
                   type="button"
                   onClick={() => {
+                    track.promptChipClicked(prompt);
                     setFocusMoment(prompt);
-                    startVoiceCapture(prompt);
+                    startVoiceCapture(prompt, "prompt_chip");
                   }}
                   className="min-h-[58px] px-4 py-3 text-left sm:text-center text-[10px] md:text-xs transition-colors hover:bg-white/5 border-b sm:border-b-0 sm:border-r last:border-r-0"
                   style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
